@@ -9,6 +9,7 @@ import { invalidateResourceCache } from "../utils/index.js"
 export const createNewRoomType = async (req: Request, res: Response) => {
   try {
     const newlyCreatedRoomType = await RoomType.create(req.body)
+    console.log("New Room Type Created:", newlyCreatedRoomType)
 
     // IMPORTANT: Clear/invalidate cache so GET /api/rooms returns the new data
     await invalidateResourceCache("ROOMS")
@@ -20,6 +21,7 @@ export const createNewRoomType = async (req: Request, res: Response) => {
       newlyCreatedRoomType,
     )
   } catch (error: any) {
+    console.error("Error Creating Room Type:", error)
     return sendError(
       res,
       "Validation Error",

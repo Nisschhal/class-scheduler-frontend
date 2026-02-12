@@ -2,6 +2,7 @@ import express from "express"
 import cors from "cors"
 import dotenv from "dotenv"
 import routes from "./routes/index.js"
+import { globalErrorHandler } from "./middleware/error-handler.middleware.js"
 
 dotenv.config() // Ensure env variables are loaded for the whole app
 
@@ -23,6 +24,6 @@ app.get("/", (req, res) => {
 app.use("/api", routes)
 
 // Final Error Middleware
-// app.use(globalErrorHandler)
+app.use(globalErrorHandler)
 
 export default app

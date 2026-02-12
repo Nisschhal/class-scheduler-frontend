@@ -1,4 +1,4 @@
-import { clearCache } from "../middleware/cache.js"
+import { clearCache } from "../middleware/cache.middleware.js"
 import { CACHE_KEYS } from "./"
 
 /**

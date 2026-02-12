@@ -1,7 +1,7 @@
 import type { Request, Response } from "express"
 import { Instructor } from "../models/instructor.model.js"
 import { sendSuccess, sendError } from "../utils/api-response.js"
-import { clearCache } from "../middleware/cache.js"
+import { clearCache } from "../middleware/cache.middleware.js"
 import { CACHE_KEYS } from "../utils/constants/cache-key.constant.js"
 import { invalidateResourceCache } from "../utils/index.js"
 /**

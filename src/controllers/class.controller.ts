@@ -2,8 +2,8 @@ import { Request, Response } from "express"
 import { ClassSchedule } from "../models/class.model.js"
 import { sendSuccess, sendError } from "../utils/api-response.js"
 import { format } from "date-fns"
-import { calculateAllClassSessions } from "../utils/schedule-generator.util.js"
 import { invalidateResourceCache } from "../utils/cache-helper.js"
+import { generateAllClassSessions } from "../utils/schedule-generator.util.js"
 
 /**
  * ATOMIC CONFLICT FINDER
@@ -169,13 +169,13 @@ export const createClassSeries = async (req: Request, res: Response) => {
 
     // 2. GENERATE ALL SESSIONS
     // This calls your utility which handles the manual dates or pattern loops
-    const allCalculatedSessions = calculateAllClassSessions(req.body)
+    const allCalculatedSessions = generateAllClassSessions(req.body)
 
     if (allCalculatedSessions.length === 0) {
       return sendError(
         res,
         "Scheduling Error",
-        "No future sessions were created. Ensure your selected dates are at least 30 minutes in the future.",
+        "No future sessions were created. Ensure your selected dates and time are at least 30 minutes in the future.",
       )
     }
 
@@ -221,8 +221,6 @@ export const getPaginatedClasses = async (req: Request, res: Response) => {
     const itemsPerPage = parseInt(req.query.limit as string) || 10
     const skipCount = (pageNumber - 1) * itemsPerPage
 
-    // TODO: REDIS - Try get from cache first
-
     const aggregationResult = await ClassSchedule.aggregate([
       {
         $facet: {
@@ -241,7 +239,7 @@ export const getPaginatedClasses = async (req: Request, res: Response) => {
             },
             {
               $lookup: {
-                from: "rooms",
+                from: "physicalrooms",
                 localField: "assignedRoom",
                 foreignField: "_id",
                 as: "roomDetails",
@@ -253,6 +251,11 @@ export const getPaginatedClasses = async (req: Request, res: Response) => {
         },
       },
     ])
+
+    console.log(
+      "Aggregation Result:",
+      JSON.stringify(aggregationResult, null, 2),
+    )
 
     const finalDataList = aggregationResult[0].paginatedData
     const totalRecords =
@@ -288,7 +291,7 @@ export const updateClassSeries = async (req: Request, res: Response) => {
      */
     const classIdToUpdate = req.params.id as string
 
-    const newRequestedSessionsList = calculateAllClassSessions(req.body)
+    const newRequestedSessionsList = generateAllClassSessions(req.body)
 
     // 1. Conflict Check (Ignoring the current class ID)
     const conflictDetail = await findDetailedSchedulingConflict(
