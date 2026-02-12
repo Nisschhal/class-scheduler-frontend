@@ -1,5 +1,5 @@
 import { Request, Response } from "express"
-import { ClassSchedule } from "../models/class.model.js"
+import { ClassSchedule, RecurrenceStrategy } from "../models/class.model.js"
 import { Instructor } from "../models/instructor.model.js"
 import { PhysicalRoom } from "../models/room.model.js"
 import { sendSuccess, sendError } from "../utils/api-response.js"
@@ -252,75 +252,120 @@ export const updateEntireClassSeries = async (req: Request, res: Response) => {
   }
 }
 
-/**
- * UPDATE SINGLE INSTANCE
- * @logic Reschedules one specific session and records it as an 'exception' to prevent bulk-update overwrites.
- */
+// class.controller.ts
+
 export const updateSingleInstance = async (req: Request, res: Response) => {
   try {
+    // Because of your middleware, these are already validated and cleaned
     const { seriesId, sessionId } = req.params
-    const { newStart, newEnd, reason } = req.body
+    const {
+      newStart,
+      newEnd,
+      reason,
+      classTitle,
+      assignedInstructor,
+      assignedRoom,
+    } = req.body
 
+    // 1. Fetch the parent series
     const series = await ClassSchedule.findById(seriesId)
     if (!series) return sendError(res, "Not Found", "Series not found")
 
-    const normalizedSessionId = Array.isArray(sessionId)
-      ? sessionId[0]
-      : sessionId
-    const session = series.preGeneratedClassSessions.id(normalizedSessionId)
+    // 2. If it's already 'none', we don't detach, we just update normally
+    if (series.recurrenceType === RecurrenceStrategy.SINGLE_INSTANCE) {
+      // Logic for updating a standalone class (simple update)
+      series.classTitle = classTitle || series.classTitle
+      series.assignedInstructor =
+        assignedInstructor || series.assignedInstructor
+      series.assignedRoom = assignedRoom || series.assignedRoom
+
+      if (newStart)
+        series.preGeneratedClassSessions[0].sessionStartDateTime = newStart
+      if (newEnd)
+        series.preGeneratedClassSessions[0].sessionEndDateTime = newEnd
+
+      await series.save()
+      return sendSuccess(res, "Updated", "Standalone class updated", series)
+    }
+
+    // 3. DETACH LOGIC: Find the specific session
+    const session = series.preGeneratedClassSessions.id(sessionId)
     if (!session)
       return sendError(res, "Not Found", "Session instance not found")
 
-    // Explicit conflict check for this specific slot
+    const finalStart = newStart || session.sessionStartDateTime
+    const finalEnd = newEnd || session.sessionEndDateTime
+
+    // 4. Conflict Check for the new detached slot
+    // We ignore the current seriesId to allow moving a session within its own time
     const conflict = await findDetailedSchedulingConflict(
-      [
-        {
-          sessionStartDateTime: new Date(newStart),
-          sessionEndDateTime: new Date(newEnd),
-        },
-      ],
-      series.assignedRoom.toString(),
-      series.assignedInstructor.toString(),
-      Array.isArray(seriesId) ? seriesId[0] : seriesId,
+      [{ sessionStartDateTime: finalStart, sessionEndDateTime: finalEnd }],
+      assignedRoom || series.assignedRoom.toString(),
+      assignedInstructor || series.assignedInstructor.toString(),
+      seriesId,
     )
     if (conflict)
       return sendError(res, "Conflict", conflict.message, [conflict])
 
-    // Upsert logic: Track this change in the exceptions array
-    const exIdx = series.exceptions.findIndex(
-      (ex) =>
-        ex.originalStart.getTime() === session.sessionStartDateTime.getTime(),
-    )
-    if (exIdx !== -1) {
-      series.exceptions[exIdx].newStart = new Date(newStart)
-      series.exceptions[exIdx].newEnd = new Date(newEnd)
-    } else {
-      series.exceptions.push({
-        originalStart: session.sessionStartDateTime,
-        status: "modified",
-        newStart: new Date(newStart),
-        newEnd: new Date(newEnd),
-        reason: reason || "Manual override",
-      })
-    }
+    /**
+     * TRANSACTION-LIKE EXECUTION
+     */
 
-    // Apply change to the pre-generated session
-    session.sessionStartDateTime = new Date(newStart)
-    session.sessionEndDateTime = new Date(newEnd)
+    // 5. Create the new Independent Class (None Strategy)
+    const newStandaloneClass = await ClassSchedule.create({
+      classTitle: classTitle || series.classTitle,
+      assignedInstructor: assignedInstructor || series.assignedInstructor,
+      assignedRoom: assignedRoom || series.assignedRoom,
+      recurrenceType: RecurrenceStrategy.SINGLE_INSTANCE,
+      seriesStartDate: finalStart,
+      seriesEndDate: finalEnd,
+      // Create the single session
+      preGeneratedClassSessions: [
+        {
+          sessionStartDateTime: finalStart,
+          sessionEndDateTime: finalEnd,
+        },
+      ],
+      // Initialize other fields
+      repeatEveryXWeeksOrDays: 1,
+      selectedWeekdays: [],
+      selectedMonthDays: [],
+      manuallyChosenDates: [],
+      dailyTimeSlots: [
+        {
+          startTime24h: format(finalStart, "HH:mm"),
+          endTime24h: format(finalEnd, "HH:mm"),
+        },
+      ],
+    })
+
+    // 6. Update the original series:
+    // Add to 'exceptions' so bulk-update doesn't recreate it
+    series.exceptions.push({
+      originalStart: session.sessionStartDateTime,
+      status: "cancelled",
+      reason: reason,
+    })
+
+    // 7. Remove from original series array
+    series.preGeneratedClassSessions.pull(sessionId)
 
     await series.save()
     await invalidateResourceCache("CLASSES")
+
     return sendSuccess(
       res,
-      "Instance Updated",
-      "Single session moved successfully.",
-      series,
+      "Detached Successfully",
+      "Instance moved to independent schedule.",
+      {
+        newClass: newStandaloneClass,
+        parentSeriesId: series._id,
+      },
     )
   } catch (error: any) {
     return sendError(res, "Update Error", error.message)
   }
 }
-
 /**
  * CANCEL SINGLE INSTANCE
  * @logic Removes a session from the active list and marks it as cancelled in exceptions.

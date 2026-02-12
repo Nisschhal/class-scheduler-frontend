@@ -8,7 +8,11 @@ import {
   updateSingleInstance,
 } from "../controllers/class.controller.js"
 import { cacheMiddleware, validate } from "../middleware/index.js"
-import { classScheduleSchema, paginationQuerySchema } from "../utils/index.js"
+import {
+  classScheduleSchema,
+  detachInstanceSchema,
+  paginationQuerySchema,
+} from "../utils/index.js"
 
 const router = Router()
 
@@ -23,7 +27,11 @@ router.post("/", validate(classScheduleSchema), createClassSeries)
 
 router.put("/:id", validate(classScheduleSchema), updateEntireClassSeries)
 
-router.patch("/:seriesId/instances/:sessionId", updateSingleInstance)
+router.patch(
+  "/:seriesId/instances/:sessionId",
+  validate(detachInstanceSchema),
+  updateSingleInstance,
+)
 router.delete("/:seriesId/instances/:sessionId", cancelSingleInstance)
 router.delete("/:id", deleteEntireClassSeries)
 

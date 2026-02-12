@@ -103,8 +103,8 @@ const ClassScheduleSchema = new Schema<IClassSchedule>(
         originalStart: { type: Date, required: true },
         status: {
           type: String,
-          enum: ["cancelled", "modified"],
-          required: true,
+          enum: ["modified", "cancelled"],
+          default: "modified",
         },
         reason: { type: String, default: "" },
         newStart: { type: Date },

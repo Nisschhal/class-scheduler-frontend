@@ -94,6 +94,25 @@ export const classScheduleSchema = z.object({
 })
 
 /**
+ * DETACH SINGLE INSTANCE VALIDATION
+ */
+export const detachInstanceSchema = z.object({
+  params: z.object({
+    seriesId: objectIdSchema,
+    sessionId: objectIdSchema,
+  }),
+  body: z.object({
+    // These are optional: if not provided, we keep the original values
+    newStart: safeDateSchema.optional(),
+    newEnd: safeDateSchema.optional(),
+    classTitle: z.string().min(3).optional(),
+    assignedInstructor: objectIdSchema.optional(),
+    assignedRoom: objectIdSchema.optional(),
+    reason: z.string().optional().default("Detached from series"),
+  }),
+})
+
+/**
  * PAGINATION QUERY VALIDATION
  */
 export const paginationQuerySchema = z.object({
