@@ -15,8 +15,18 @@ app.use((req, res, next) => {
   next()
 })
 
-app.use(cors())
+// Allow your frontend origin(s) — use * only for testing
+app.use(cors({
+  origin: '*',  // ← TEMPORARY: allow everyone (test only)
+  // Later change to:
+  // origin: ['http://localhost:5173', 'https://your-frontend-domain.vercel.app'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false, // no cookies yet
+}));
+
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }));
 
 // Base API route
 app.get("/", (req, res) => {
